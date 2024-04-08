@@ -251,6 +251,10 @@ public class UserService {
                 return ResponseEntity.badRequest()
                         .body(new MessageResponse("You don't have permission to change role!"));
             }
+            if (editData.getStatus() != null) {
+                return ResponseEntity.badRequest()
+                        .body(new MessageResponse("You don't have permission to change the status!"));
+            }
 
             JsonNode patched = profileEditReq.apply(mapper.convertValue(toEditUser, JsonNode.class));
             User editedUser = mapper.convertValue(patched, User.class);
