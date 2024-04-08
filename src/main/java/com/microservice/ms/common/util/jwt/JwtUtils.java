@@ -14,6 +14,7 @@ import com.microservice.ms.common.util.services.UserDetailsImpl;
 import io.jsonwebtoken.*;
 
 @Component
+@SuppressWarnings("deprecation")
 public class JwtUtils {
   private static final Logger logger = LoggerFactory.getLogger(JwtUtils.class);
 

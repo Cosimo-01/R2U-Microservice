@@ -8,13 +8,15 @@ import org.springframework.security.authentication.dao.DaoAuthenticationProvider
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 import com.microservice.ms.common.util.jwt.AuthEntryPointJwt;
+
+import static org.springframework.security.config.Customizer.withDefaults;
 import com.microservice.ms.common.util.jwt.AuthTokenFilter;
 import com.microservice.ms.common.util.services.UserDetailsServiceImpl;
 
@@ -53,18 +55,33 @@ public class WebSecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
+    @SuppressWarnings({ "deprecation" })
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        http.cors().and().csrf().disable()
-                .exceptionHandling().authenticationEntryPoint(unauthorizedHandler).and()
-                .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS).and()
-                .authorizeRequests()
-                .requestMatchers("/api/auth/**").permitAll()
-                .anyRequest().authenticated();
+        ///
+        http
+                .cors(withDefaults())
+                .csrf(csrf -> csrf
+                        .disable())
+                .exceptionHandling(handling -> handling
+                        .authenticationEntryPoint(unauthorizedHandler))
+                .sessionManagement(management -> management
+                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeRequests(requests -> requests
+                        .requestMatchers("/api/auth/**")
+                        .permitAll()
+                        .anyRequest()
+                        .authenticated());
 
-        http.authenticationProvider(authenticationProvider());
+        http
+                .authenticationProvider(
+                        authenticationProvider());
 
-        http.addFilterBefore(authenticationJwtTokenFilter(), UsernamePasswordAuthenticationFilter.class);
+        http
+                .addFilterBefore(
+                        authenticationJwtTokenFilter(),
+                        UsernamePasswordAuthenticationFilter.class);
+        //*/
 
         return http.build();
     }

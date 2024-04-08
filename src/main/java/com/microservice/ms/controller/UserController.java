@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.annotation.Secured;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.github.fge.jsonpatch.JsonPatch;
 import com.github.fge.jsonpatch.JsonPatchException;
+import com.microservice.ms.common.util.services.UserDetailsImpl;
 import com.microservice.ms.payload.requests.activity.NewActivityRequest;
 import com.microservice.ms.payload.requests.activity.UpdateActivityRequest;
 import com.microservice.ms.service.ActivitiesService;
@@ -31,7 +33,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 @CrossOrigin(origins = "*", maxAge = 3600)
 @RestController
 @RequestMapping("api/user")
-@Secured("USER")
+@Secured({ "USER" })
 public class UserController {
     static final Logger logger = LogManager.getLogger(UserController.class);
 
@@ -47,11 +49,9 @@ public class UserController {
     }
 
     @PatchMapping(path = "profile/v1/edit", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<?> editProfile(@Valid @RequestBody JsonPatch profileEditReq) {
-        logger.info(profileEditReq);
-
+    public ResponseEntity<?> editProfile(@Valid @RequestBody JsonPatch patch) {
         try {
-            return userService.profileEdit(profileEditReq);
+            return userService.profileEdit(patch);
         } catch (JsonPatchException | JsonProcessingException e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
@@ -69,4 +69,11 @@ public class UserController {
         return activitiesService.updateActivity(activityId, updateActivityReq);
     }
 
+    @GetMapping("/profile/v1/deleteUser")
+    public ResponseEntity<?> deleteUser() {
+        UserDetailsImpl userDetails = (UserDetailsImpl) SecurityContextHolder.getContext().getAuthentication()
+                .getPrincipal();
+
+        return userService.deleteUser(userDetails.getId());
+    }
 }

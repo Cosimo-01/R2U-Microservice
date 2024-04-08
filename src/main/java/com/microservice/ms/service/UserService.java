@@ -2,6 +2,7 @@ package com.microservice.ms.service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.Optional;
 
 import org.apache.logging.log4j.LogManager;
@@ -158,6 +159,41 @@ public class UserService {
      * @param profileEditReq
      * @return
      */
+    public ResponseEntity<?> profileEdit(
+            Long userId,
+            JsonPatch profileEditReq)
+            throws JsonPatchException,
+            JsonProcessingException {
+
+        User toEditUser;
+        Optional<User> user = userRepository.findById(userId);
+        if (user.isPresent()) {
+            toEditUser = user.get();
+        } else {
+            return ResponseEntity.badRequest().body(new MessageResponse("User not found."));
+        }
+
+        if (profileEditReq != null) {
+            ObjectMapper mapper = new ObjectMapper();
+
+            JsonNode patched = profileEditReq.apply(mapper.convertValue(toEditUser, JsonNode.class));
+            User editedUser = mapper.convertValue(patched, User.class);
+
+            editedUser.setPassword(toEditUser.getPassword());
+            editedUser.setLastUpdatedAt(LocalDateTime.now().toString());
+
+            userRepository.save(editedUser);
+            return ResponseEntity.status(200).body(new UpdateResponse(editedUser));
+        } else {
+            return ResponseEntity.badRequest().body(new MessageResponse("No edited information sent."));
+        }
+    }
+
+    /**
+     * 
+     * @param profileEditReq
+     * @return
+     */
     public ResponseEntity<?> profileEdit(JsonPatch profileEditReq) throws JsonPatchException, JsonProcessingException {
         UserDetailsImpl userDetails = (UserDetailsImpl) SecurityContextHolder.getContext().getAuthentication()
                 .getPrincipal();
@@ -171,22 +207,71 @@ public class UserService {
         }
 
         if (profileEditReq != null) {
-
             ObjectMapper mapper = new ObjectMapper();
-            JsonNode patched = profileEditReq.apply(mapper.convertValue(toEditUser, JsonNode.class));
-            logger.info("patched" + patched);
-            User editedUser = mapper.treeToValue(patched, User.class);
-            logger.info("edited" + editedUser);
 
+            JsonNode patched = profileEditReq.apply(mapper.convertValue(toEditUser, JsonNode.class));
+            User editedUser = mapper.convertValue(patched, User.class);
+
+            editedUser.setPassword(toEditUser.getPassword());
             editedUser.setLastUpdatedAt(LocalDateTime.now().toString());
-            logger.info("edited+lastupdated" + editedUser);
 
             userRepository.save(editedUser);
-
-            return ResponseEntity.status(200).body(new UpdateResponse(toEditUser));
+            return ResponseEntity.status(200).body(new UpdateResponse(editedUser));
         } else {
             return ResponseEntity.badRequest().body(new MessageResponse("No edited information sent."));
         }
     }
 
+    /**
+     * 
+     * @return
+     */
+    public ResponseEntity<?> getAllUsers() {
+        List<User> allUsers = userRepository.findAll();
+        return ResponseEntity.status(200).body(allUsers);
+    }
+
+    /**
+     * 
+     * @param userId
+     * @return
+     * @throws NoSuchElementException
+     */
+    public ResponseEntity<?> getUserById(Long userId) throws NoSuchElementException {
+        User user = userRepository.findById(userId).get();
+        return ResponseEntity.status(200).body(user);
+    }
+
+    /**
+     * 
+     * @param userId
+     * @return
+     */
+    public ResponseEntity<?> getUserActivity(Long userId) {
+        if (userRepository.findById(userId).isEmpty()) {
+            return ResponseEntity.badRequest().body(new MessageResponse("No User found."));
+        }
+
+        List<Activities> userActivity = activitiesRepository.findByUserId(userId);
+
+        if (userActivity.size() == 0) {
+            return ResponseEntity.status(404).body(new MessageResponse("User has no activity registered yet."));
+        } else {
+            return ResponseEntity.status(200).body(userActivity);
+        }
+    }
+
+    /**
+     * 
+     * @param userId
+     * @return
+     */
+    public ResponseEntity<?> deleteUser(Long userId) {
+        try {
+            userRepository.deleteById(userId);
+            return ResponseEntity.ok().body(new MessageResponse("User " + userId + " successfully deleted."));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(new MessageResponse("No user found with id: " + userId));
+        }
+    }
 }
