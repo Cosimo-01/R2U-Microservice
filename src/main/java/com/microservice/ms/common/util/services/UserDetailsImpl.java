@@ -1,5 +1,6 @@
 package com.microservice.ms.common.util.services;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.Collections;
 
@@ -9,6 +10,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.microservice.ms.model.User;
+import com.microservice.ms.model.enums.UserStatus;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -29,19 +31,22 @@ public class UserDetailsImpl implements UserDetails {
 	@JsonIgnore
 	private String password;
 
+	private boolean nonExpiredCredentials = true;
+
 	private String firstName;
 	private String lastName;
 
 	private String role;
 
 	private String status;
+	private LocalDate deletedAt;
 
 	@JsonIgnore
 	private Collection<? extends GrantedAuthority> authorities;
 
 	///
 	public UserDetailsImpl(Long id, String username, String email, String password, String firstName, String lastName,
-			String role, String status) {
+			String role, LocalDate deletedAt, String status) {
 		this.id = id;
 		this.username = username;
 		this.email = email;
@@ -49,6 +54,7 @@ public class UserDetailsImpl implements UserDetails {
 		this.firstName = firstName;
 		this.lastName = lastName;
 		this.role = role;
+		this.deletedAt = deletedAt;
 		this.status = status;
 	}
 	//*/
@@ -62,6 +68,7 @@ public class UserDetailsImpl implements UserDetails {
 				user.getFirstName(),
 				user.getLastName(),
 				user.getRole().name(),
+				user.getDeletedAt(),
 				user.getStatus().name());
 	}
 
@@ -72,22 +79,34 @@ public class UserDetailsImpl implements UserDetails {
 
 	@Override
 	public boolean isAccountNonExpired() {
-		return true;
+		if (status == UserStatus.DELETED.toString() && deletedAt.plusYears(1).isAfter(LocalDate.now())) {
+			return false;
+		} else {
+			return true;
+		}
 	}
 
 	@Override
 	public boolean isAccountNonLocked() {
-		return true;
+		if (status == UserStatus.TEMPORARY_LOCK.toString() || status == UserStatus.PERMANENT_LOCK.toString()) {
+			return false;
+		} else {
+			return true;
+		}
 	}
 
 	@Override
 	public boolean isCredentialsNonExpired() {
-		return true;
+		return nonExpiredCredentials;
 	}
 
 	@Override
 	public boolean isEnabled() {
-		return true;
+		if (status == UserStatus.DELETED.toString()) {
+			return false;
+		} else {
+			return true;
+		}
 	}
 
 }

@@ -33,7 +33,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 @CrossOrigin(origins = "*", maxAge = 3600)
 @RestController
 @RequestMapping("api/user")
-@Secured({ "USER" })
+@Secured({ "USER", "ADMIN" })
 public class UserController {
     static final Logger logger = LogManager.getLogger(UserController.class);
 

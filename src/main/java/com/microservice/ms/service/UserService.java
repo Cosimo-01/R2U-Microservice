@@ -1,5 +1,6 @@
 package com.microservice.ms.service;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -22,11 +23,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 import com.github.fge.jsonpatch.JsonPatch;
 import com.github.fge.jsonpatch.JsonPatchException;
-
+import com.microservice.ms.common.util.jwt.AuthTokenFilter;
 import com.microservice.ms.common.util.jwt.JwtUtils;
+import com.microservice.ms.common.util.jwt.TokenBlacklist;
 import com.microservice.ms.common.util.services.UserDetailsImpl;
 import com.microservice.ms.model.Activities;
 import com.microservice.ms.model.User;
+import com.microservice.ms.model.enums.UserStatus;
 import com.microservice.ms.payload.requests.auth.LoginRequest;
 import com.microservice.ms.payload.requests.auth.RegisterRequest;
 import com.microservice.ms.repository.ActivitiesRepository;
@@ -35,6 +38,8 @@ import com.microservice.ms.response.JwtResponse;
 import com.microservice.ms.response.MessageResponse;
 import com.microservice.ms.response.ProfileInfoResponse;
 import com.microservice.ms.response.UpdateResponse;
+
+import jakarta.servlet.http.HttpServletRequest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -56,6 +61,9 @@ public class UserService {
 
     @Autowired
     JwtUtils jwtUtils;
+
+    @Autowired
+    TokenBlacklist tokenBlacklist;
 
     /**
      * Creates and Saves a new user
@@ -102,28 +110,43 @@ public class UserService {
      */
     public ResponseEntity<?> loginUser(LoginRequest loginReq) {
         if (userRepository.existsByUsername(loginReq.getUsername())) {
-            try {
-                Authentication authentication = authenticationManager.authenticate(
-                        new UsernamePasswordAuthenticationToken(
-                                loginReq.getUsername(),
-                                loginReq.getPassword()));
 
-                SecurityContextHolder.getContext().setAuthentication(authentication);
-                String jwt = jwtUtils.generateJwtToken(authentication);
-                UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
+            User user = userRepository.findByUsername(loginReq.getUsername()).get();
+            if (user.getStatus() == UserStatus.DELETED) {
+                return ResponseEntity.status(404).body(new MessageResponse("User Not Found"));
 
-                return ResponseEntity.ok(new JwtResponse(jwt, userDetails));
+            } else if (user.getStatus() == UserStatus.TEMPORARY_LOCK) {
+                return ResponseEntity.badRequest().body(
+                        new MessageResponse("User is temporarily locked from access until: " + user.getLockedUntil()));
 
-            } catch (AuthenticationException e) {
-                return ResponseEntity.badRequest().body(new MessageResponse("Wrong Username or Password"));
+            } else if (user.getStatus() == UserStatus.PERMANENT_LOCK) {
+                return ResponseEntity.badRequest().body(new MessageResponse("User is permanently locked from access!"));
 
-            } catch (Exception e) {
-                return ResponseEntity.status(400).body(new MessageResponse(String.format("%s", e)));
+            } else {
+                try {
+                    Authentication authentication = authenticationManager.authenticate(
+                            new UsernamePasswordAuthenticationToken(
+                                    loginReq.getUsername(),
+                                    loginReq.getPassword()));
+
+                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                    String jwt = jwtUtils.generateJwtToken(authentication);
+                    UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
+
+                    return ResponseEntity.ok(new JwtResponse(jwt, userDetails));
+
+                } catch (AuthenticationException e) {
+                    return ResponseEntity.badRequest().body(new MessageResponse("Wrong Username or Password"));
+
+                } catch (Exception e) {
+                    return ResponseEntity.status(400).body(new MessageResponse(String.format("%s", e)));
+
+                }
 
             }
 
         } else {
-            return ResponseEntity.badRequest().body(new MessageResponse("No user associated with this email"));
+            return ResponseEntity.badRequest().body(new MessageResponse("No user associated with this username"));
 
         }
 
@@ -137,8 +160,11 @@ public class UserService {
      * 
      * @Author Cosimo
      */
-    public ResponseEntity<?> logoutUser() {
-        return ResponseEntity.ok(new JwtResponse(null, null));
+    public ResponseEntity<?> logoutUser(HttpServletRequest req) {
+        String token = AuthTokenFilter.parseJwt(req);
+        tokenBlacklist.addToBlacklist(token);
+
+        return ResponseEntity.ok("Logged Out Successfully");
     }
 
     /**
@@ -159,11 +185,8 @@ public class UserService {
      * @param profileEditReq
      * @return
      */
-    public ResponseEntity<?> profileEdit(
-            Long userId,
-            JsonPatch profileEditReq)
-            throws JsonPatchException,
-            JsonProcessingException {
+    public ResponseEntity<?> profileEdit(Long userId, JsonPatch profileEditReq)
+            throws JsonPatchException, JsonProcessingException {
 
         User toEditUser;
         Optional<User> user = userRepository.findById(userId);
@@ -175,6 +198,14 @@ public class UserService {
 
         if (profileEditReq != null) {
             ObjectMapper mapper = new ObjectMapper();
+
+            User editData = mapper.convertValue(profileEditReq, User.class);
+            if (editData.getId() != null) {
+                return ResponseEntity.badRequest().body(new MessageResponse("Id can't be changed!"));
+            }
+            if (editData.getUsername() != null) {
+                return ResponseEntity.badRequest().body(new MessageResponse("Username can't be changed!"));
+            }
 
             JsonNode patched = profileEditReq.apply(mapper.convertValue(toEditUser, JsonNode.class));
             User editedUser = mapper.convertValue(patched, User.class);
@@ -208,6 +239,18 @@ public class UserService {
 
         if (profileEditReq != null) {
             ObjectMapper mapper = new ObjectMapper();
+
+            User editData = mapper.convertValue(profileEditReq, User.class);
+            if (editData.getId() != null) {
+                return ResponseEntity.badRequest().body(new MessageResponse("Id can't be changed!"));
+            }
+            if (editData.getUsername() != null) {
+                return ResponseEntity.badRequest().body(new MessageResponse("Username can't be changed!"));
+            }
+            if (editData.getRole() != null) {
+                return ResponseEntity.badRequest()
+                        .body(new MessageResponse("You don't have permission to change role!"));
+            }
 
             JsonNode patched = profileEditReq.apply(mapper.convertValue(toEditUser, JsonNode.class));
             User editedUser = mapper.convertValue(patched, User.class);
@@ -268,10 +311,25 @@ public class UserService {
      */
     public ResponseEntity<?> deleteUser(Long userId) {
         try {
-            userRepository.deleteById(userId);
-            return ResponseEntity.ok().body(new MessageResponse("User " + userId + " successfully deleted."));
+            User user;
+            Optional<User> toEditUser = userRepository.findById(userId);
+            if (toEditUser.isPresent()) {
+                user = toEditUser.get();
+            } else {
+                return ResponseEntity.badRequest().body(new MessageResponse("User not found."));
+            }
+
+            user.setStatus(UserStatus.DELETED);
+            user.setDeletedAt(LocalDate.now());
+            user.setLastUpdatedAt(LocalDateTime.now().toString());
+
+            userRepository.save(user);
+
+            return ResponseEntity.ok()
+                    .body(new MessageResponse("User " + user.getUsername() + " successfully deleted."));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(new MessageResponse("No user found with id: " + userId));
         }
     }
+
 }

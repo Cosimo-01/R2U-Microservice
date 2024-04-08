@@ -1,5 +1,6 @@
 package com.microservice.ms.model;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import org.springframework.data.annotation.CreatedDate;
@@ -68,8 +69,8 @@ public class User {
     @NotNull
     private String lastUpdatedAt;
 
-    private String deletedAt;
-    private String lockedAt;
+    private LocalDate deletedAt;
+    private LocalDate lockedUntil;
 
     public User(String username, String email, String password, String firstName, String lastName, String birthday) {
         this.username = username;

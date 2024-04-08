@@ -8,6 +8,7 @@ import org.springframework.security.authentication.dao.DaoAuthenticationProvider
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
@@ -22,6 +23,7 @@ import com.microservice.ms.common.util.services.UserDetailsServiceImpl;
 
 @Configuration
 @EnableMethodSecurity(securedEnabled = true)
+@EnableWebSecurity
 public class WebSecurityConfig {
 
     @Autowired
@@ -55,9 +57,9 @@ public class WebSecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
-    @SuppressWarnings({ "deprecation" })
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+
         ///
         http
                 .cors(withDefaults())
@@ -67,7 +69,7 @@ public class WebSecurityConfig {
                         .authenticationEntryPoint(unauthorizedHandler))
                 .sessionManagement(management -> management
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeRequests(requests -> requests
+                .authorizeHttpRequests(requests -> requests
                         .requestMatchers("/api/auth/**")
                         .permitAll()
                         .anyRequest()
